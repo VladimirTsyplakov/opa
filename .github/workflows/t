@@ -1,0 +1,91 @@
+```cpp
+#include <QApplication>
+#include <QGraphicsScene>
+#include <QGraphicsView>
+#include <QScrollArea>
+#include <QVBoxLayout>
+#include <QWidget>
+#include <QMouseEvent>
+#include <poppler-qt4.h>
+
+class PdfViewer : public QWidget {
+    Q_OBJECT
+
+public:
+    PdfViewer(QWidget *parent = nullptr) : QWidget(parent) {
+        scene = new QGraphicsScene(this);
+        view = new QGraphicsView(scene, this);
+        scrollArea = new QScrollArea(this);
+        scrollArea->setWidget(view);
+        scrollArea->setWidgetResizable(true);
+
+        QVBoxLayout *layout = new QVBoxLayout(this);
+        layout->addWidget(scrollArea);
+        setLayout(layout);
+    }
+
+    void loadPdf(const QString &filePath) {
+        document = Poppler::Document::load(filePath);
+        if (!document) {
+            qWarning("Failed to load PDF file.");
+            return;
+        }
+
+        displayPage(0); // покажем первую страницу
+    }
+
+    void displayPage(int pageIndex) {
+        if (!document || pageIndex < 0 || pageIndex >= document->numPages()) {
+            return;
+        }
+
+        Poppler::Page *page = document->page(pageIndex);
+        if (!page) {
+            return;
+        }
+
+        QImage image = page->renderToImage();
+        scene->clear(); // очистка старых страниц
+        scene->addPixmap(QPixmap::fromImage(image));
+        scene->setSceneRect(image.rect());
+        delete page; // освобождение памяти
+    }
+
+protected:
+    void wheelEvent(QWheelEvent *event) override {
+        if (event->angleDelta().y() > 0) {
+            zoomIn(); // Увеличиваем зум при прокрутке вверх
+        } else {
+            zoomOut(); // Уменьшаем зум при прокрутке вниз
+        }
+        event->accept();
+    }
+
+private:
+    void zoomIn() {
+        view->scale(1.2, 1.2); // Увеличение зума
+    }
+
+    void zoomOut() {
+        view->scale(0.8, 0.8); // Уменьшение зума
+    }
+
+    QGraphicsScene *scene;
+    QGraphicsView *view;
+    QScrollArea *scrollArea;
+    Poppler::Document *document = nullptr;
+};
+
+int main(int argc, char *argv[]) {
+    QApplication app(argc, argv);
+    PdfViewer viewer;
+    viewer.loadPdf("path/to/your/file.pdf"); // Замените на ваш PDF файл
+    viewer.resize(800, 600);
+    viewer.show();
+    return app.exec();
+}
+
+#include "main.moc"
+```
+
+.
