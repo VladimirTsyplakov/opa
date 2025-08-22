@@ -176,4 +176,98 @@ echo "Собрано и установлено в: $PREFIX"
 echo "Содержимое lib/:"
 ls -1 $PREFIX/lib/libmupdf*.a
 
+#!/bin/bash
+set -e
+
+# ==== Параметры ====
+TOOLCHAIN=/opt/toolchains/gcc-arm-linux-gnueabihf
+SYSROOT=/opt/arm-sysroot
+PREFIX=/opt/mupdf-full-arm
+
+# Компилятор
+HOST=arm-linux-gnueabihf
+BUILD=$(gcc -dumpmachine)  # autodetect, например: x86_64-pc-linux-gnu
+
+export CC=$TOOLCHAIN/bin/${HOST}-gcc
+export AR=$TOOLCHAIN/bin/${HOST}-ar
+export LD=$TOOLCHAIN/bin/${HOST}-ld
+export RANLIB=$TOOLCHAIN/bin/${HOST}-ranlib
+export CFLAGS="--sysroot=$SYSROOT"
+export LDFLAGS="--sysroot=$SYSROOT"
+
+mkdir -p build-mupdf && cd build-mupdf
+
+echo "===== [1/4] Скачиваем MuPDF 1.9a ====="
+rm -rf mupdf
+git clone https://git.ghostscript.com/mupdf.git
+cd mupdf
+git checkout release-1.9a
+cd ..
+
+echo "===== [2/4] Скачиваем и собираем FreeType ====="
+wget https://download.savannah.gnu.org/releases/freetype/freetype-2.10.4.tar.gz
+tar -xzf freetype-2.10.4.tar.gz
+cd freetype-2.10.4
+
+./configure \
+  --host=$HOST \
+  --build=$BUILD \
+  --prefix=$PREFIX \
+  --with-sysroot=$SYSROOT \
+  --enable-static \
+  --disable-shared
+
+make -j$(nproc)
+make install
+cd ..
+
+echo "===== [3/4] Скачиваем и собираем HarfBuzz (с фиксом cross-compiling) ====="
+git clone https://github.com/harfbuzz/harfbuzz.git
+cd harfbuzz
+git checkout 2.7.2
+
+./autogen.sh
+
+./configure \
+  --host=$HOST \
+  --build=$BUILD \
+  --prefix=$PREFIX \
+  --with-sysroot=$SYSROOT \
+  --enable-static \
+  --disable-shared \
+  --disable-introspection \
+  --disable-gtk-doc \
+  --disable-icu \
+  --disable-graphite2 \
+  --disable-android-shaper \
+  --disable-tests \
+  --disable-dependency-tracking
+
+make -j$(nproc)
+make install
+cd ..
+
+echo "===== [4/4] Собираем MuPDF 1.9a под ARM ====="
+cd mupdf
+
+# Удалим встроенные thirdparty
+rm -rf thirdparty/freetype thirdparty/harfbuzz
+
+make clean || true
+
+make build=release \
+  HAVE_X11=no HAVE_GLUT=no HAVE_GL=no HAVE_CURL=no \
+  prefix=$PREFIX \
+  FREETYPE_CFLAGS="-I$PREFIX/include/freetype2" \
+  FREETYPE_LIBS="-L$PREFIX/lib -lfreetype" \
+  HARFBUZZ_CFLAGS="-I$PREFIX/include/harfbuzz" \
+  HARFBUZZ_LIBS="-L$PREFIX/lib -lharfbuzz"
+
+make install build=release prefix=$PREFIX
+
+echo
+echo "===== ✅ Готово ====="
+echo "Установлено в: $PREFIX"
+echo "Содержимое lib/:"
+ls -1 $PREFIX/lib/libmupdf*.a
 
